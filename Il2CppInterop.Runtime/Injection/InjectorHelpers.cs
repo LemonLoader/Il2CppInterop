@@ -62,6 +62,7 @@ namespace Il2CppInterop.Runtime.Injection
                 InjectedImage.NameNoExt = InjectedAssembly.Name.Name;
         }
 
+        private static readonly ScriptingMethodInvoke_Hook ScriptingMethodInvokeHook = new();
         private static readonly GenericMethod_GetMethod_Hook GenericMethodGetMethodHook = new();
         private static readonly MetadataCache_GetTypeInfoFromTypeDefinitionIndex_Hook GetTypeInfoFromTypeDefinitionIndexHook = new();
         private static readonly Class_GetFieldDefaultValue_Hook GetFieldDefaultValueHook = new();
@@ -72,6 +73,7 @@ namespace Il2CppInterop.Runtime.Injection
         internal static void Setup()
         {
             if (InjectedAssembly == null) CreateInjectedAssembly();
+            ScriptingMethodInvokeHook.ApplyHook();
             GenericMethodGetMethodHook.ApplyHook();
             //GetTypeInfoFromTypeDefinitionIndexHook.ApplyHook();
             GetFieldDefaultValueHook.ApplyHook();
