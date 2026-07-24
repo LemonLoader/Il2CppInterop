@@ -235,8 +235,8 @@ public static unsafe partial class ClassInjector
         classPointer.HasFinalize = true;
         classPointer.IsVtableInitialized = true;
 
-        classPointer.Name = Marshal.StringToHGlobalAnsi(type.Name);
-        classPointer.Namespace = Marshal.StringToHGlobalAnsi(type.Namespace ?? string.Empty);
+        classPointer.Name = Marshal.StringToCoTaskMemUTF8(type.Name);
+        classPointer.Namespace = Marshal.StringToCoTaskMemUTF8(type.Namespace ?? string.Empty);
 
         classPointer.ThisArg.Type = classPointer.ByValArg.Type = Il2CppTypeEnum.IL2CPP_TYPE_CLASS;
         classPointer.ThisArg.ByRef = true;
@@ -257,7 +257,7 @@ public static unsafe partial class ClassInjector
         for (var i = 0; i < classPointer.FieldCount; i++)
         {
             var fieldInfo = UnityVersionHandler.Wrap(il2cppFields + i * UnityVersionHandler.FieldInfoSize());
-            fieldInfo.Name = Marshal.StringToHGlobalAnsi(fieldsToInject[i].Name);
+            fieldInfo.Name = Marshal.StringToCoTaskMemUTF8(fieldsToInject[i].Name);
             fieldInfo.Parent = classPointer.ClassPointer;
             fieldInfo.Offset = fieldOffset;
 
@@ -347,7 +347,7 @@ public static unsafe partial class ClassInjector
                 for (var i = 0; i < klass.MethodCount; i++)
                 {
                     var baseMethod = UnityVersionHandler.Wrap(klass.Methods[i]);
-                    var name = Marshal.PtrToStringAnsi(baseMethod.Name)!;
+                    var name = Marshal.PtrToStringUTF8(baseMethod.Name)!;
 
                     if (baseMethod.Flags.HasFlag(Il2CppMethodFlags.METHOD_ATTRIBUTE_ABSTRACT))
                     {
@@ -357,7 +357,7 @@ public static unsafe partial class ClassInjector
                     {
                         var existing = list.SingleOrDefault(m =>
                         {
-                            if (Marshal.PtrToStringAnsi(m.Name) != name) return false;
+                            if (Marshal.PtrToStringUTF8(m.Name) != name) return false;
                             if (m.ParametersCount != baseMethod.ParametersCount) return false;
                             if (GetIl2CppTypeFullName(m.ReturnType) != GetIl2CppTypeFullName(baseMethod.ReturnType)) return false;
 
@@ -416,7 +416,7 @@ public static unsafe partial class ClassInjector
                 baseMethod = HandleAbstractMethod(i);
             }
 
-            var methodName = Marshal.PtrToStringAnsi(baseMethod.Name);
+            var methodName = Marshal.PtrToStringUTF8(baseMethod.Name);
 
             if (methodName == "Finalize") // slot number is not static
             {
@@ -465,7 +465,7 @@ public static unsafe partial class ClassInjector
             for (var j = 0; j < interfaces[i].MethodCount; j++)
             {
                 var vTableMethod = UnityVersionHandler.Wrap(interfaces[i].Methods[j]);
-                var methodName = Marshal.PtrToStringAnsi(vTableMethod.Name);
+                var methodName = Marshal.PtrToStringUTF8(vTableMethod.Name);
                 if (!infos.TryGetValue((methodName, vTableMethod.ParametersCount, vTableMethod.IsGeneric),
                         out var methodIndex))
                 {
@@ -598,7 +598,7 @@ public static unsafe partial class ClassInjector
         INativeClassStruct declaringClass)
     {
         var converted = UnityVersionHandler.NewMethod();
-        converted.Name = Marshal.StringToHGlobalAnsi(methodName);
+        converted.Name = Marshal.StringToCoTaskMemUTF8(methodName);
         converted.Class = declaringClass.ClassPointer;
 
         Delegate invoker;
@@ -630,7 +630,7 @@ public static unsafe partial class ClassInjector
     internal static Il2CppMethodInfo* ConvertMethodInfo(MethodInfo monoMethod, INativeClassStruct declaringClass)
     {
         var converted = UnityVersionHandler.NewMethod();
-        converted.Name = Marshal.StringToHGlobalAnsi(monoMethod.Name);
+        converted.Name = Marshal.StringToCoTaskMemUTF8(monoMethod.Name);
         converted.Class = declaringClass.ClassPointer;
 
         var parameters = monoMethod.GetParameters();
@@ -645,7 +645,7 @@ public static unsafe partial class ClassInjector
                 var param = UnityVersionHandler.Wrap(paramsArray[i]);
                 if (UnityVersionHandler.ParameterInfoHasNamePosToken())
                 {
-                    param.Name = Marshal.StringToHGlobalAnsi(parameterInfo.Name);
+                    param.Name = Marshal.StringToCoTaskMemUTF8(parameterInfo.Name);
                     param.Position = i;
                     param.Token = 0;
                 }
@@ -1115,26 +1115,24 @@ public static unsafe partial class ClassInjector
     {
         var klass = UnityVersionHandler.Wrap((Il2CppClass*)IL2CPP.il2cpp_class_from_type((IntPtr)typePointer));
         var assembly = UnityVersionHandler.Wrap(UnityVersionHandler.Wrap(klass.Image).Assembly);
-
         var fullName = new StringBuilder();
-
-        var namespaceName = Marshal.PtrToStringAnsi(klass.Namespace);
-        if (!string.IsNullOrEmpty(namespaceName))
-        {
-            fullName.Append(namespaceName);
-            fullName.Append('.');
-        }
-
+        var names = new Stack<string>();
         var declaringType = klass;
-        while ((declaringType = UnityVersionHandler.Wrap(declaringType.DeclaringType)) != default)
+        var outerType = klass;
+        do
         {
-            fullName.Append(Marshal.PtrToStringAnsi(declaringType.Name));
-            fullName.Append('+');
+            names.Push(Marshal.PtrToStringUTF8(declaringType.Name) ?? "");
+            outerType = declaringType;
         }
+        while ((declaringType = UnityVersionHandler.Wrap(declaringType.DeclaringType)) != default);
+        var namespaceName = outerType.Namespace != IntPtr.Zero ? Marshal.PtrToStringUTF8(outerType.Namespace) ?? "" : "";
 
-        fullName.Append(Marshal.PtrToStringAnsi(klass.Name));
+        fullName.Append(namespaceName);
+        if (namespaceName.Length > 0)
+            fullName.Append('.');
+        fullName.Append(string.Join("+", names));
 
-        var assemblyName = Marshal.PtrToStringAnsi(assembly.Name.Name);
+        var assemblyName = Marshal.PtrToStringUTF8(assembly.Name.Name);
         if (assemblyName != "mscorlib")
         {
             fullName.Append(", ");
@@ -1147,7 +1145,9 @@ public static unsafe partial class ClassInjector
     internal static Type SystemTypeFromIl2CppType(Il2CppTypeStruct* typePointer)
     {
         var fullName = GetIl2CppTypeFullName(typePointer);
-        var type = Type.GetType(fullName) ?? throw new NullReferenceException($"Couldn't find System.Type for Il2Cpp type: {fullName}");
+        var type = Type.GetType(fullName)
+            ?? Type.GetType(fullName.Contains('.') ? "Il2Cpp" + fullName : "Il2Cpp." + fullName)
+            ?? throw new NullReferenceException($"Couldn't find System.Type for Il2Cpp type: {fullName}");
 
         INativeTypeStruct wrappedType = UnityVersionHandler.Wrap(typePointer);
         if (wrappedType.Type == Il2CppTypeEnum.IL2CPP_TYPE_GENERICINST)

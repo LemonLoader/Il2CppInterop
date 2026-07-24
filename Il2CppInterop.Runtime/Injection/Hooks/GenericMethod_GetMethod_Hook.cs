@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Linq;
 using System.Runtime.InteropServices;
 using Il2CppInterop.Common;
@@ -19,6 +19,9 @@ namespace Il2CppInterop.Runtime.Injection.Hooks
 
         private Il2CppMethodInfo* Hook(Il2CppGenericMethod* gmethod, bool copyMethodPtr)
         {
+            if (gmethod == null || gmethod->methodDefinition == null)
+                return Original(gmethod, copyMethodPtr);
+
             if (ClassInjector.InflatedMethodFromContextDictionary.TryGetValue((IntPtr)gmethod->methodDefinition, out var methods))
             {
                 var instancePointer = gmethod->context.method_inst;

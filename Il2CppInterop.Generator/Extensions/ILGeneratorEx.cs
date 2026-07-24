@@ -38,7 +38,7 @@ public static class ILGeneratorEx
             body.Add(OpCodes.Stobj, newType.ToTypeDefOrRef());
             body.Add(OpCodes.Pop);
         }
-        else if (originalType.IsValueType)
+        else if (originalType.IsValueType())
         {
             var typeSpecifics = enclosingType.AssemblyContext.GlobalContext.JudgeSpecificsByOriginalType(originalType);
             if (typeSpecifics == TypeRewriteContext.TypeSpecifics.BlittableStruct)
@@ -52,10 +52,10 @@ public static class ILGeneratorEx
                 body.AddLoadArgument(argumentIndex);
                 body.Add(OpCodes.Call, imports.IL2CPP_Il2CppObjectBaseToPtr.Value);
                 body.Add(OpCodes.Call, imports.IL2CPP_il2cpp_object_unbox.Value);
-                var classPointerTypeRef = new GenericInstanceTypeSignature(imports.Il2CppClassPointerStore.ToTypeDefOrRef(), imports.Il2CppClassPointerStore.IsValueType, newType);
+                var classPointerTypeRef = new GenericInstanceTypeSignature(imports.Il2CppClassPointerStore.ToTypeDefOrRef(), imports.Il2CppClassPointerStore.IsValueType(), newType);
                 var classPointerFieldRef =
                     ReferenceCreator.CreateFieldReference("NativeClassPtr", imports.Module.IntPtr(), classPointerTypeRef.ToTypeDefOrRef());
-                body.Add(OpCodes.Ldsfld, enclosingType.NewType.Module!.DefaultImporter.ImportField(classPointerFieldRef));
+                body.Add(OpCodes.Ldsfld, enclosingType.NewType.DeclaringModule!.DefaultImporter.ImportField(classPointerFieldRef));
                 body.Add(OpCodes.Ldc_I4_0);
                 body.Add(OpCodes.Conv_U);
                 body.Add(OpCodes.Call, imports.IL2CPP_il2cpp_class_value_size.Value);
@@ -79,11 +79,11 @@ public static class ILGeneratorEx
 
         var imports = enclosingType.AssemblyContext.Imports;
 
-        Debug.Assert(enclosingType.NewType.Module is not null);
+        Debug.Assert(enclosingType.NewType.DeclaringModule is not null);
         body.Add(OpCodes.Ldtoken, newType.ToTypeDefOrRef());
-        body.Add(OpCodes.Call, enclosingType.NewType.Module!.TypeGetTypeFromHandle());
+        body.Add(OpCodes.Call, enclosingType.NewType.DeclaringModule!.TypeGetTypeFromHandle());
         body.Add(OpCodes.Dup);
-        body.Add(OpCodes.Callvirt, enclosingType.NewType.Module!.TypeGetIsValueType());
+        body.Add(OpCodes.Callvirt, enclosingType.NewType.DeclaringModule!.TypeGetIsValueType());
 
         var finalNop = new CilInstructionLabel();
         var stringNop = new CilInstructionLabel();
@@ -92,9 +92,9 @@ public static class ILGeneratorEx
 
         body.Add(OpCodes.Brtrue, valueTypeNop);
 
-        body.Add(OpCodes.Callvirt, enclosingType.NewType.Module!.TypeGetFullName());
+        body.Add(OpCodes.Callvirt, enclosingType.NewType.DeclaringModule!.TypeGetFullName());
         body.Add(OpCodes.Ldstr, "System.String");
-        body.Add(OpCodes.Call, enclosingType.NewType.Module!.StringEquals());
+        body.Add(OpCodes.Call, enclosingType.NewType.DeclaringModule!.StringEquals());
         body.Add(OpCodes.Brtrue_S, stringNop);
 
         body.AddLoadArgument(argumentIndex);
@@ -162,16 +162,19 @@ public static class ILGeneratorEx
         var imports = enclosingType.AssemblyContext.Imports;
         if (originalType is ByReferenceTypeSignature)
         {
-            if (newType.GetElementType().IsValueType)
+            if (newType.GetElementType().IsValueType())
             {
                 body.AddLoadArgument(argumentIndex);
                 body.Add(OpCodes.Conv_I);
             }
-            else if (originalType.GetElementType().IsValueType)
+            else if (originalType.GetElementType().IsValueType())
             {
                 body.AddLoadArgument(argumentIndex);
                 body.Add(OpCodes.Ldind_Ref);
                 body.Add(OpCodes.Call, imports.IL2CPP_Il2CppObjectBaseToPtrNotNull.Value);
+
+                if (unboxNonBlittableType)
+                    body.Add(OpCodes.Call, imports.IL2CPP_il2cpp_object_unbox.Value);
             }
             else
             {
@@ -194,9 +197,9 @@ public static class ILGeneratorEx
             Debug.Assert(newType.IsPointerLike());
             body.AddLoadArgument(argumentIndex);
         }
-        else if (originalType.IsValueType)
+        else if (originalType.IsValueType())
         {
-            if (newType.IsValueType)
+            if (newType.IsValueType())
             {
                 if (argumentIndex == 0 && valueTypeArgument0IsAPointer)
                     body.Add(OpCodes.Ldarg_0);
@@ -232,10 +235,10 @@ public static class ILGeneratorEx
     {
         var imports = enclosingType.AssemblyContext.Imports;
 
-        Debug.Assert(enclosingType.NewType.Module is not null);
+        Debug.Assert(enclosingType.NewType.DeclaringModule is not null);
         body.Add(OpCodes.Ldtoken, newType.ToTypeDefOrRef());
-        body.Add(OpCodes.Call, enclosingType.NewType.Module!.TypeGetTypeFromHandle());
-        body.Add(OpCodes.Callvirt, enclosingType.NewType.Module!.TypeGetIsValueType());
+        body.Add(OpCodes.Call, enclosingType.NewType.DeclaringModule!.TypeGetTypeFromHandle());
+        body.Add(OpCodes.Callvirt, enclosingType.NewType.DeclaringModule!.TypeGetIsValueType());
 
         var finalNop = new CilInstructionLabel();
         var valueTypeNop = new CilInstructionLabel();
@@ -302,9 +305,9 @@ public static class ILGeneratorEx
             Debug.Assert(convertedReturnType.IsPointerLike());
             body.Add(OpCodes.Ldloc, pointerVariable);
         }
-        else if (originalReturnType.IsValueType)
+        else if (originalReturnType.IsValueType())
         {
-            if (convertedReturnType.IsValueType)
+            if (convertedReturnType.IsValueType())
             {
                 body.Add(OpCodes.Ldloc, pointerVariable);
                 if (unboxValueType) body.Add(OpCodes.Call, imports.IL2CPP_il2cpp_object_unbox.Value);
@@ -318,12 +321,12 @@ public static class ILGeneratorEx
                 }
                 else
                 {
-                    Debug.Assert(enclosingType.NewType.Module is not null);
-                    var classPointerTypeRef = new GenericInstanceTypeSignature(imports.Il2CppClassPointerStore.ToTypeDefOrRef(), imports.Il2CppClassPointerStore.IsValueType, convertedReturnType);
+                    Debug.Assert(enclosingType.NewType.DeclaringModule is not null);
+                    var classPointerTypeRef = new GenericInstanceTypeSignature(imports.Il2CppClassPointerStore.ToTypeDefOrRef(), imports.Il2CppClassPointerStore.IsValueType(), convertedReturnType);
                     var classPointerFieldRef =
                         ReferenceCreator.CreateFieldReference("NativeClassPtr", imports.Module.IntPtr(),
                             classPointerTypeRef.ToTypeDefOrRef());
-                    body.Add(OpCodes.Ldsfld, enclosingType.NewType.Module!.DefaultImporter.ImportField(classPointerFieldRef));
+                    body.Add(OpCodes.Ldsfld, enclosingType.NewType.DeclaringModule!.DefaultImporter.ImportField(classPointerFieldRef));
                     body.Add(OpCodes.Ldloc, pointerVariable);
                     body.Add(OpCodes.Call, imports.IL2CPP_il2cpp_value_box.Value);
                 }
@@ -389,19 +392,19 @@ public static class ILGeneratorEx
     public static void GenerateBoxMethod(RuntimeAssemblyReferences imports, TypeDefinition targetType,
         IFieldDescriptor classHandle, TypeSignature il2CppObjectTypeDef)
     {
-        Debug.Assert(targetType.Module is not null);
+        Debug.Assert(targetType.DeclaringModule is not null);
         var method = new MethodDefinition("BoxIl2CppObject", MethodAttributes.Public | MethodAttributes.HideBySig,
-            MethodSignature.CreateInstance(targetType.Module!.DefaultImporter.ImportTypeSignature(il2CppObjectTypeDef)));
+            MethodSignature.CreateInstance(targetType.DeclaringModule!.DefaultImporter.ImportTypeSignature(il2CppObjectTypeDef)));
         targetType.Methods.Add(method);
 
-        method.CilMethodBody = new CilMethodBody(method);
+        method.CilMethodBody = new CilMethodBody();
         var methodBody = method.CilMethodBody.Instructions;
         methodBody.Add(OpCodes.Ldsfld, classHandle);
         methodBody.Add(OpCodes.Ldarg_0);
-        methodBody.Add(OpCodes.Call, targetType.Module.DefaultImporter.ImportMethod(imports.IL2CPP_il2cpp_value_box.Value));
+        methodBody.Add(OpCodes.Call, targetType.DeclaringModule.DefaultImporter.ImportMethod(imports.IL2CPP_il2cpp_value_box.Value));
 
         methodBody.Add(OpCodes.Newobj,
-            new MemberReference(il2CppObjectTypeDef.ToTypeDefOrRef(), ".ctor", MethodSignature.CreateInstance(targetType.Module.Void(), targetType.Module.IntPtr())));
+            new MemberReference(il2CppObjectTypeDef.ToTypeDefOrRef(), ".ctor", MethodSignature.CreateInstance(targetType.DeclaringModule.Void(), targetType.DeclaringModule.IntPtr())));
 
         methodBody.Add(OpCodes.Ret);
     }

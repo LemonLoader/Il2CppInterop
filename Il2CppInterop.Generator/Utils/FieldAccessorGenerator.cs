@@ -17,23 +17,23 @@ internal static class FieldAccessorGenerator
             attributes,
             MethodSignatureCreator.CreateMethodSignature(attributes, property.Signature!.ReturnType, 0));
 
-        getter.CilMethodBody = new(getter);
+        getter.CilMethodBody = new();
         var getterBody = getter.CilMethodBody.Instructions;
         property.DeclaringType!.Methods.Add(getter);
 
         CilLocalVariable local0;
         if (field.IsStatic)
         {
-            local0 = new CilLocalVariable(property.Signature.ReturnType.IsValueType
+            local0 = new CilLocalVariable(property.Signature.ReturnType.IsValueType()
                 ? property.Signature.ReturnType
                 : imports.Module.IntPtr());
             getter.CilMethodBody.LocalVariables.Add(local0);
 
             var localIsPointer = false;
-            if (field.Signature!.FieldType.IsValueType && !property.Signature.ReturnType.IsValueType)
+            if (field.Signature!.FieldType.IsValueType() && !property.Signature.ReturnType.IsValueType())
             {
                 var pointerStore = imports.Il2CppClassPointerStore.MakeGenericInstanceType(property.Signature.ReturnType).ToTypeDefOrRef();
-                var pointerStoreType = property.DeclaringType.Module!.DefaultImporter.ImportType(pointerStore);
+                var pointerStoreType = property.DeclaringType.DeclaringModule!.DefaultImporter.ImportType(pointerStore);
                 getterBody.Add(OpCodes.Ldsfld,
                     new MemberReference(pointerStoreType, "NativeClassPtr", new FieldSignature(imports.Module.IntPtr())));
                 getterBody.Add(OpCodes.Ldc_I4, 0);
@@ -53,7 +53,7 @@ internal static class FieldAccessorGenerator
             getterBody.Add(OpCodes.Conv_U);
             getterBody.Add(OpCodes.Call, imports.IL2CPP_il2cpp_field_static_get_value.Value);
 
-            if (property.Signature.ReturnType.IsValueType)
+            if (property.Signature.ReturnType.IsValueType())
             {
                 getterBody.Add(OpCodes.Ldloc, local0);
                 getterBody.Add(OpCodes.Ret);
@@ -95,7 +95,7 @@ internal static class FieldAccessorGenerator
             attributes,
             MethodSignatureCreator.CreateMethodSignature(attributes, imports.Module.Void(), 0, property.Signature!.ReturnType));
         property.DeclaringType!.Methods.Add(setter);
-        setter.CilMethodBody = new(setter);
+        setter.CilMethodBody = new();
         var setterBody = setter.CilMethodBody.Instructions;
 
         if (field.IsStatic)

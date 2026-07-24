@@ -30,14 +30,14 @@ public static class UnstripGenerator
         invokeMethod.ImplAttributes = MethodImplAttributes.CodeTypeMask;
         delegateType.Methods.Add(invokeMethod);
 
-        invokeMethod.Signature!.ReturnType = convertedMethod.Signature!.ReturnType.IsValueType
+        invokeMethod.Signature!.ReturnType = convertedMethod.Signature!.ReturnType.IsValueType()
             ? convertedMethod.Signature.ReturnType
             : imports.Module.IntPtr();
         if (!convertedMethod.IsStatic)
             invokeMethod.AddParameter(imports.Module.IntPtr(), "@this");
         foreach (var convertedParameter in convertedMethod.Parameters)
             invokeMethod.AddParameter(
-                convertedParameter.ParameterType.IsValueType
+                convertedParameter.ParameterType.IsValueType()
                     ? convertedParameter.ParameterType
                     : imports.Module.IntPtr(),
                 convertedParameter.Name,
@@ -64,7 +64,7 @@ public static class UnstripGenerator
         {
             var param = newMethod.Parameters[i];
             var paramType = param.ParameterType;
-            if (paramType.IsValueType || (paramType is ByReferenceTypeSignature && paramType.GetElementType().IsValueType))
+            if (paramType.IsValueType() || (paramType is ByReferenceTypeSignature && paramType.GetElementType().IsValueType()))
             {
                 body.AddLoadArgument(i + argOffset);
             }
@@ -109,7 +109,7 @@ public static class UnstripGenerator
         bodyProcessor.Add(OpCodes.Ldstr, GetICallSignature(unityMethod));
 
         var methodRef = imports.IL2CPP_ResolveICall.Value.MakeGenericInstanceMethod(delegateType.ToTypeSignature());
-        bodyProcessor.Add(OpCodes.Call, enclosingType.Module!.DefaultImporter.ImportMethod(methodRef));
+        bodyProcessor.Add(OpCodes.Call, enclosingType.DeclaringModule!.DefaultImporter.ImportMethod(methodRef));
         bodyProcessor.Add(OpCodes.Stsfld, delegateField);
 
         bodyProcessor.Add(OpCodes.Ret); // restore ret
